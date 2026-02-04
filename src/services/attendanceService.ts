@@ -47,11 +47,23 @@ class AttendanceService extends BaseService {
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       
+      // Get user's company_id
+      const { data: profile, error: profileError } = await this.client
+        .from('profiles')
+        .select('company_id')
+        .eq('id', userId)
+        .single();
+
+      if (profileError || !profile?.company_id) {
+        throw new Error('User company context not found');
+      }
+
       // Check if already signed in today (no sign_out_time)
       const { data: existing } = await this.client
         .from('attendance_sessions')
         .select('*')
         .eq('user_id', userId)
+        .eq('company_id', profile.company_id)
         .gte('sign_in_time', `${today}T00:00:00`)
         .lt('sign_in_time', `${today}T23:59:59`)
         .is('sign_out_time', null)
@@ -65,6 +77,7 @@ class AttendanceService extends BaseService {
         .from('attendance_sessions')
         .insert([{
           user_id: userId,
+          company_id: profile.company_id,
           sign_in_time: now.toISOString(),
           status: 'present',
         }])
@@ -83,9 +96,6 @@ class AttendanceService extends BaseService {
         .from('attendance_sessions')
         .update({
           sign_out_time: new Date().toISOString(),
-          sign_out_lat: lat,
-          sign_out_lng: lng,
-          updated_at: new Date().toISOString(),
         })
         .eq('id', attendanceId)
         .select()
