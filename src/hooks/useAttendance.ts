@@ -7,8 +7,9 @@ export function useAttendance(filters: any = {}) {
     queryKey: ['attendance', filters],
     queryFn: () => attendanceService.getAttendance(filters),
     enabled: !!filters.userId,
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 0, // Always consider data stale for attendance
     gcTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 10 * 1000, // Refetch every 10 seconds
   });
 }
 
@@ -49,8 +50,8 @@ export function useSignIn() {
     mutationFn: ({ userId, lat, lng }: { userId: string; lat?: number; lng?: number }) =>
       attendanceService.signIn(userId, lat, lng),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['attendance', variables.userId] });
-      queryClient.invalidateQueries({ queryKey: ['attendance', 'today'] });
+      // Invalidate all attendance queries to refetch data
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
     },
   });
 }
@@ -61,9 +62,9 @@ export function useSignOut() {
   return useMutation({
     mutationFn: ({ attendanceId, lat, lng }: { attendanceId: string; lat?: number; lng?: number }) =>
       attendanceService.signOut(attendanceId, lat, lng),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['attendance', variables.attendanceId] });
-      queryClient.invalidateQueries({ queryKey: ['attendance', 'today'] });
+    onSuccess: () => {
+      // Invalidate all attendance queries to refetch data
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
     },
   });
 }

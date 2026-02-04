@@ -70,7 +70,8 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
         userId: user.id,
       });
       toast.success('🚀 Session started! Have a productive day!');
-      onSessionUpdate();
+      // Wait a moment for the database to persist before refetching
+      setTimeout(onSessionUpdate, 500);
     } catch (error: any) {
       console.error('Error signing in:', error);
       if (error.message?.includes('Already signed in')) {
@@ -96,7 +97,8 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
         attendanceId: currentSession.id,
       });
       toast.success(`Great work! You logged ${hoursWorked.toFixed(1)} hours today 💪`);
-      onSessionUpdate();
+      // Wait a moment for the database to persist before refetching
+      setTimeout(onSessionUpdate, 500);
     } catch (error: any) {
       console.error('Error signing out:', error);
       toast.error(error.message || 'Failed to end session');

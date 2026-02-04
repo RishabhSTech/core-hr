@@ -45,6 +45,7 @@ export interface UserRole {
 export interface AttendanceSession {
   id: string;
   user_id: string;
+  company_id: string;
   sign_in_time: string;
   sign_out_time: string | null;
   status: AttendanceStatus;

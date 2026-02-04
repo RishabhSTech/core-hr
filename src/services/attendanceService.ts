@@ -45,7 +45,8 @@ class AttendanceService extends BaseService {
   async signIn(userId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
     return this.withRetry(async () => {
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
       
       // Get user's company_id
       const { data: profile, error: profileError } = await this.client
@@ -58,33 +59,45 @@ class AttendanceService extends BaseService {
         throw new Error('User company context not found');
       }
 
-      // Check if already signed in today (no sign_out_time)
-      const { data: existing } = await this.client
+      // Check if already signed in today (has active session with no sign_out_time)
+      const { data: existing, error: checkError } = await this.client
         .from('attendance_sessions')
         .select('*')
         .eq('user_id', userId)
         .eq('company_id', profile.company_id)
-        .gte('sign_in_time', `${today}T00:00:00`)
-        .lt('sign_in_time', `${today}T23:59:59`)
         .is('sign_out_time', null)
-        .single();
+        .gte('created_at', todayStart.toISOString())
+        .lte('created_at', todayEnd.toISOString());
 
-      if (existing) {
+      if (checkError) {
+        console.error('Error checking existing session:', checkError);
+      }
+
+      if (existing && existing.length > 0) {
         throw new Error('Already signed in today');
       }
 
+      // Create new attendance session
       const { data, error } = await this.client
         .from('attendance_sessions')
-        .insert([{
+        .insert({
           user_id: userId,
           company_id: profile.company_id,
           sign_in_time: now.toISOString(),
           status: 'present',
-        }])
+        } as any)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error inserting attendance:', error);
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error('Failed to create attendance record');
+      }
+
       this.clearCache(`user_attendance:${userId}`);
       return data as AttendanceSession;
     }, `Sign in ${userId}`);
@@ -147,13 +160,25 @@ class AttendanceService extends BaseService {
   }
 
   async markAbsent(userId: string, date?: string): Promise<AttendanceSession> {
-    const attendanceDate = date ? `${date}T09:00:00Z` : new Date().toISOString();
-
     return this.withRetry(async () => {
+      // Get user's company_id
+      const { data: profile, error: profileError } = await this.client
+        .from('profiles')
+        .select('company_id')
+        .eq('id', userId)
+        .single();
+
+      if (profileError || !profile?.company_id) {
+        throw new Error('User company context not found');
+      }
+
+      const attendanceDate = date ? `${date}T09:00:00Z` : new Date().toISOString();
+
       const { data, error } = await this.client
         .from('attendance_sessions')
         .insert([{
           user_id: userId,
+          company_id: profile.company_id,
           sign_in_time: attendanceDate,
           status: 'absent' as AttendanceStatus,
         }])
@@ -206,12 +231,28 @@ class AttendanceService extends BaseService {
     attendanceData: Array<{ userId: string; status: AttendanceStatus; date?: string }>
   ): Promise<AttendanceSession[]> {
     return this.withRetry(async () => {
+      if (!attendanceData || attendanceData.length === 0) {
+        return [];
+      }
+
+      // Get company_id from first user's profile
+      const { data: profile, error: profileError } = await this.client
+        .from('profiles')
+        .select('company_id')
+        .eq('id', attendanceData[0].userId)
+        .single();
+
+      if (profileError || !profile?.company_id) {
+        throw new Error('User company context not found');
+      }
+
       const today = new Date().toISOString();
       
       const records = attendanceData.map(item => {
         const dateTime = item.date ? `${item.date}T09:00:00Z` : today;
         return {
           user_id: item.userId,
+          company_id: profile.company_id,
           sign_in_time: dateTime,
           status: item.status,
         };
