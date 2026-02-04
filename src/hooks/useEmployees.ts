@@ -25,6 +25,7 @@ export const useEmployees = (filters: EmployeeFilters = {}) => {
   return useQuery({
     queryKey: employeeQueryKeys.list(filters),
     queryFn: () => employeeService.getEmployees(filters),
+    enabled: !!filters.companyId, // Only fetch when companyId is available
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000,   // 30 minutes (formerly cacheTime)
     placeholderData: (previousData) => previousData, // Keep previous data while loading

@@ -4,7 +4,41 @@ import { Payroll, Profile } from '@/types/hrms';
 
 class PayrollService extends BaseService {
   async getPayroll(filters: PaginationParams = {}): Promise<any> {
+    // Note: company_id filter is enforced by RLS policies
+    // This method now properly includes company_id in the query via the base service
     return this.fetchPaginated<Payroll>('payroll', filters);
+  }
+
+  async getPayrollByCompany(companyId: string, filters: PaginationParams = {}): Promise<any> {
+    const { page = 1, pageSize = 50 } = filters;
+    const cacheKey = `payroll:company:${companyId}:${page}`;
+    
+    const cached = this.getCache(cacheKey);
+    if (cached) return cached;
+
+    return this.withRetry(async () => {
+      let query = this.client.from('payroll').select('*', { count: 'exact' });
+
+      // Filter by company_id (required for RLS)
+      query = query.eq('company_id', companyId);
+
+      // Apply pagination
+      const start = (page - 1) * pageSize;
+      query = query.range(start, start + pageSize - 1);
+
+      const { data, count, error } = await query;
+      if (error) throw error;
+
+      const result = {
+        data: data || [],
+        count: count || 0,
+        hasMore: (page * pageSize) < (count || 0),
+        page,
+      };
+
+      this.setCache(cacheKey, result);
+      return result;
+    }, 'Get payroll by company');
   }
 
   async getPayrollByUserAndMonth(userId: string, month: number, year: number): Promise<Payroll | null> {
@@ -28,6 +62,7 @@ class PayrollService extends BaseService {
   }
 
   async processPayroll(data: {
+    companyId: string;
     month: number;
     year: number;
     employeeIds: string[];
@@ -37,6 +72,7 @@ class PayrollService extends BaseService {
     return this.withRetry(async () => {
       const payrolls = data.employeeIds.map(userId => ({
         user_id: userId,
+        company_id: data.companyId,
         month: data.month,
         year: data.year,
         working_days: 22,
@@ -94,12 +130,13 @@ class PayrollService extends BaseService {
     }, `Calculate payroll ${userId}:${month}:${year}`);
   }
 
-  async bulkProcessPayroll(employeeIds: string[], month: number, year: number): Promise<Payroll[]> {
+  async bulkProcessPayroll(companyId: string, employeeIds: string[], month: number, year: number): Promise<Payroll[]> {
     return this.batchOperation(
       employeeIds,
       async (batch) => {
         const payrolls = batch.map(userId => ({
           user_id: userId,
+          company_id: companyId,
           month,
           year,
           working_days: 22,

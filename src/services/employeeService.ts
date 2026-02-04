@@ -24,6 +24,12 @@ class EmployeeService extends BaseService {
    */
   async getEmployees(filters: EmployeeFilters = {}): Promise<any> {
     const { companyId, departmentId, search, role, status = 'active', page = 1, pageSize = 50, sort } = filters;
+    
+    // Company ID is required for RLS policies to work correctly
+    if (!companyId) {
+      return { data: [], count: 0, hasMore: false, page };
+    }
+    
     const cacheKey = `employees:${companyId}:${departmentId}:${search}:${role}:${status}:${page}`;
 
     // Check cache
@@ -36,10 +42,8 @@ class EmployeeService extends BaseService {
         { count: 'exact' }
       );
 
-      // Apply company filter (required for RLS)
-      if (companyId) {
-        query = query.eq('company_id', companyId);
-      }
+      // Apply company filter (REQUIRED for RLS)
+      query = query.eq('company_id', companyId);
 
       // Apply filters
       if (departmentId) {

@@ -2,10 +2,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { payrollService } from '@/services/payrollService';
 
-export function usePayroll(filters = {}) {
+export function usePayroll(filters: any = {}) {
+  // Support both old-style (without company) and new-style (with company)
+  const { companyId, ...otherFilters } = filters;
+  
   return useQuery({
-    queryKey: ['payroll', filters],
-    queryFn: () => payrollService.getPayroll(filters),
+    queryKey: ['payroll', companyId, otherFilters],
+    queryFn: () => {
+      if (companyId) {
+        return payrollService.getPayrollByCompany(companyId, otherFilters);
+      }
+      return payrollService.getPayroll(otherFilters);
+    },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
   });
@@ -48,8 +56,8 @@ export function useBulkProcessPayroll() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { employeeIds: string[]; month: number; year: number }) =>
-      payrollService.bulkProcessPayroll(data.employeeIds, data.month, data.year),
+    mutationFn: (data: { companyId: string; employeeIds: string[]; month: number; year: number }) =>
+      payrollService.bulkProcessPayroll(data.companyId, data.employeeIds, data.month, data.year),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
     },

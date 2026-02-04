@@ -26,13 +26,17 @@ export default function Payroll() {
 
   // Fetch payroll data
   const { data: payrollData, isLoading: payrollLoading, error: payrollError, refetch } = usePayroll({
+    companyId: company?.id,
     month: parseInt(selectedMonth),
     year: parseInt(selectedYear),
     limit: 100
   });
 
-  // Fetch all employees
-  const { data: employeesData, isLoading: employeesLoading } = useEmployees({ pageSize: 100 });
+  // Fetch all employees for this company
+  const { data: employeesData, isLoading: employeesLoading } = useEmployees({ 
+    companyId: company?.id,
+    pageSize: 100 
+  });
 
   // Calculate metrics efficiently
   const metrics = useMemoState(() => {
