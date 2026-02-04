@@ -39,16 +39,6 @@ export default function Dashboard() {
   // Get current session from user's attendance
   const currentSession = userAttendance?.[0] || null;
 
-      // Fetch leave balance
-      const { data: balanceData } = await supabase
-        .from('leave_balances')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (balanceData) {
-        setLeaveBalance(balanceData as LeaveBalanceType);
-
   useEffect(() => {
     if (metricsError) setErrorState(metricsError as Error);
   }, [metricsError]);
