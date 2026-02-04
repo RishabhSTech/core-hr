@@ -13,7 +13,10 @@ import {
   Bell,
   ChevronRight,
   Sparkles,
-  Package
+  Package,
+  TrendingUp,
+  Activity,
+  AlertSquare
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -25,6 +28,9 @@ interface SuperAdminLayoutProps {
 
 const navItems = [
   { href: '/super-admin', icon: LayoutDashboard, label: 'Dashboard', description: 'Overview & metrics' },
+  { href: '/super-admin/analytics', icon: TrendingUp, label: 'Analytics', description: 'Growth & insights' },
+  { href: '/super-admin/system-monitor', icon: Activity, label: 'System Monitor', description: 'Real-time metrics' },
+  { href: '/super-admin/audit-logs', icon: AlertSquare, label: 'Audit Logs', description: 'Activity history' },
   { href: '/super-admin/companies', icon: Building2, label: 'Companies', description: 'Manage organizations' },
   { href: '/super-admin/users', icon: Users, label: 'Users', description: 'User management' },
   { href: '/super-admin/subscriptions', icon: CreditCard, label: 'Subscriptions', description: 'Billing overview' },

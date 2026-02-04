@@ -38,12 +38,6 @@ export default function Index() {
   const { user, loading } = useAuth();
   const [activeScreen, setActiveScreen] = useState(0);
 
-  useEffect(() => {
-    if (!loading && user) {
-      navigate('/dashboard');
-    }
-  }, [user, loading, navigate]);
-
   // Auto-rotate product screens
   useEffect(() => {
     const interval = setInterval(() => {

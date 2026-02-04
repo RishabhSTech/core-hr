@@ -1,61 +1,55 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Payroll as PayrollType, Profile } from '@/types/hrms';
-import { DollarSign, TrendingUp, Calendar, Users, Calculator, CheckCircle } from 'lucide-react';
+import { useCompany } from '@/contexts/CompanyContext';
+import { usePayroll, useProcessPayroll } from '@/hooks/usePayroll';
+import { useEmployees } from '@/hooks/useEmployees';
+import { DollarSign, TrendingUp, Calendar, Users, Calculator, CheckCircle, AlertCircle } from 'lucide-react';
 import { ProcessPayrollDialog } from '@/components/payroll/ProcessPayrollDialog';
+import { QueryErrorHandler } from '@/components/QueryErrorHandler';
+import { TableSkeleton, CardSkeleton } from '@/components/Skeleton';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { useState, useMemo as useMemoState } from 'react';
 
 export default function Payroll() {
-  const { user, profile, isAdmin, role } = useAuth();
-  const [payrolls, setPayrolls] = useState<PayrollType[]>([]);
-  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
+  const { user, profile, isAdmin } = useAuth();
+  const { company } = useCompany();
   const [selectedMonth, setSelectedMonth] = useState<string>(`${new Date().getMonth() + 1}`);
   const [selectedYear, setSelectedYear] = useState<string>(`${new Date().getFullYear()}`);
-  const [loading, setLoading] = useState(true);
-  const [selectedEmployee, setSelectedEmployee] = useState<Profile | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
 
-  const fetchData = async () => {
-    if (!user) return;
-    setLoading(true);
+  // Fetch payroll data
+  const { data: payrollData, isLoading: payrollLoading, error: payrollError, refetch } = usePayroll({
+    month: parseInt(selectedMonth),
+    year: parseInt(selectedYear),
+    limit: 100
+  });
 
-    try {
-      // Employees only see their own payroll
-      const payrollQuery = isAdmin
-        ? supabase.from('payroll').select('*').order('created_at', { ascending: false })
-        : supabase.from('payroll').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+  // Fetch all employees
+  const { data: employeesData, isLoading: employeesLoading } = useEmployees({ pageSize: 100 });
 
-      const { data: payrollData } = await payrollQuery;
-      if (payrollData) {
-        setPayrolls(payrollData as PayrollType[]);
-      }
-
-      // Only admins can see all profiles for payroll overview
-      if (isAdmin) {
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('*')
-          .order('first_name');
-        if (profilesData) {
-          setAllProfiles(profilesData as unknown as Profile[]);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching payroll:', error);
-    } finally {
-      setLoading(false);
+  // Calculate metrics efficiently
+  const metrics = useMemoState(() => {
+    if (!employeesData?.data) {
+      return { totalBudget: 0, processedCount: 0, avgSalary: 0, totalPayroll: 0 };
     }
-  };
 
-  useEffect(() => {
-    fetchData();
-  }, [user, isAdmin]);
+    const employees = employeesData.data;
+    const payrolls = payrollData?.data || [];
+
+    const totalBudget = employees.reduce((sum, emp) => sum + Number(emp.monthly_salary || 0), 0);
+    const processedCount = payrolls.filter(p => p.status === 'processed' || p.status === 'paid').length;
+    const avgSalary = employees.length > 0 ? Math.round(totalBudget / employees.length) : 0;
+    const totalPayroll = payrolls.reduce((sum, p) => sum + Number(p.net_salary || 0), 0);
+
+    return { totalBudget, processedCount, avgSalary, totalPayroll };
+  }, [employeesData?.data, payrollData?.data]);
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -63,14 +57,8 @@ export default function Payroll() {
   ];
 
   const getPayrollForEmployee = (userId: string) => {
-    return payrolls.find(
-      p => p.user_id === userId && p.month === parseInt(selectedMonth) && p.year === parseInt(selectedYear)
-    );
+    return (payrollData?.data || []).find(p => p.user_id === userId);
   };
-
-  const currentPayroll = payrolls.find(
-    p => p.user_id === user?.id && p.month === parseInt(selectedMonth) && p.year === parseInt(selectedYear)
-  );
 
   const getStatusBadge = (status: string | undefined) => {
     switch (status) {
@@ -83,56 +71,69 @@ export default function Payroll() {
     }
   };
 
-  const handleProcessPayroll = (emp: Profile) => {
-    setSelectedEmployee(emp);
-    setProcessDialogOpen(true);
-  };
+  const isLoading = payrollLoading || employeesLoading;
 
-  // Calculate totals for admin view
-  const totalSalaryBudget = allProfiles.reduce((sum, p) => sum + Number(p.monthly_salary || 0), 0);
-  const processedCount = allProfiles.filter(emp => getPayrollForEmployee(emp.user_id)?.status === 'processed' || getPayrollForEmployee(emp.user_id)?.status === 'paid').length;
-  const estimatedSalary = profile?.monthly_salary || 0;
-  const perDaySalary = Number(estimatedSalary) / 30;
+  if (!isAdmin) {
+    return (
+      <AppLayout>
+        <Card>
+          <CardContent className="p-12">
+            <div className="text-center">
+              <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">Payroll Management</h3>
+              <p className="text-muted-foreground">
+                Payroll information is managed by administrators. Contact HR for details.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </AppLayout>
+    );
+  }
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              {isAdmin ? 'Payroll Management' : 'My Payroll'}
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {isAdmin ? 'Process and manage employee payroll' : 'View your salary and payroll details'}
-            </p>
+    <ErrorBoundary>
+      <AppLayout>
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Payroll Management</h1>
+              <p className="text-muted-foreground mt-1">Process and manage employee payroll</p>
+            </div>
+            <div className="flex gap-2">
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((month, i) => (
+                    <SelectItem key={month} value={`${i + 1}`}>{month}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[2024, 2025, 2026].map(year => (
+                    <SelectItem key={year} value={`${year}`}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map((month, i) => (
-                  <SelectItem key={month} value={`${i + 1}`}>{month}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="w-[100px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[2024, 2025, 2026].map(year => (
-                  <SelectItem key={year} value={`${year}`}>{year}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
 
-        {isAdmin ? (
-          // Admin View - Payroll Overview
-          <>
+          {/* Error Handler */}
+          <QueryErrorHandler error={payrollError} onRetry={refetch} />
+
+          {/* Metrics Cards */}
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(i => <CardSkeleton key={i} />)}
+            </div>
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="p-6">
@@ -140,7 +141,7 @@ export default function Payroll() {
                     <div>
                       <p className="text-sm text-muted-foreground">Total Monthly Budget</p>
                       <p className="text-2xl font-bold text-foreground mt-1">
-                        ₹{totalSalaryBudget.toLocaleString()}
+                        ₹{metrics.totalBudget.toLocaleString()}
                       </p>
                     </div>
                     <div className="p-2 rounded-lg bg-primary/10 text-primary">
@@ -156,7 +157,7 @@ export default function Payroll() {
                     <div>
                       <p className="text-sm text-muted-foreground">Total Employees</p>
                       <p className="text-2xl font-bold text-foreground mt-1">
-                        {allProfiles.length}
+                        {employeesData?.data?.length || 0}
                       </p>
                     </div>
                     <div className="p-2 rounded-lg bg-green-100 text-green-600">
@@ -172,7 +173,7 @@ export default function Payroll() {
                     <div>
                       <p className="text-sm text-muted-foreground">Processed</p>
                       <p className="text-2xl font-bold text-foreground mt-1">
-                        {processedCount} / {allProfiles.length}
+                        {metrics.processedCount} / {employeesData?.data?.length || 0}
                       </p>
                     </div>
                     <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
@@ -188,7 +189,7 @@ export default function Payroll() {
                     <div>
                       <p className="text-sm text-muted-foreground">Avg. Salary</p>
                       <p className="text-2xl font-bold text-foreground mt-1">
-                        ₹{Math.round(totalSalaryBudget / Math.max(allProfiles.length, 1)).toLocaleString()}
+                        ₹{metrics.avgSalary.toLocaleString()}
                       </p>
                     </div>
                     <div className="p-2 rounded-lg bg-purple-100 text-purple-600">
@@ -198,105 +199,97 @@ export default function Payroll() {
                 </CardContent>
               </Card>
             </div>
+          )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold">
-                  Employee Payroll - {months[parseInt(selectedMonth) - 1]} {selectedYear}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <p className="text-center py-8 text-muted-foreground">Loading...</p>
-                ) : allProfiles.length === 0 ? (
-                  <p className="text-center py-8 text-muted-foreground">No employees found</p>
-                ) : (
-                  <div className="space-y-3">
-                    {allProfiles.map((emp) => {
-                      const empPayroll = getPayrollForEmployee(emp.user_id);
-                      return (
-                        <div
-                          key={emp.id}
-                          className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10">
-                              <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                                {emp.first_name?.[0]}{emp.last_name?.[0]}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {emp.first_name} {emp.last_name}
-                              </p>
-                              <p className="text-sm text-muted-foreground">{emp.employee_id}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <div className="text-right">
-                              {empPayroll ? (
-                                <>
-                                  <p className="font-semibold text-foreground">
-                                    ₹{Number(empPayroll.net_salary || 0).toLocaleString()}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Base: ₹{Number(emp.monthly_salary || 0).toLocaleString()}
-                                  </p>
-                                </>
-                              ) : (
-                                <p className="font-semibold text-foreground">
-                                  ₹{Number(emp.monthly_salary || 0).toLocaleString()}
-                                </p>
-                              )}
-                            </div>
-                            <div className="w-24 text-center">
-                              {getStatusBadge(empPayroll?.status)}
-                            </div>
-                            {(role === 'owner' || role === 'admin') && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleProcessPayroll(emp)}
-                              >
-                                <Calculator className="h-4 w-4 mr-1" />
-                                {empPayroll ? 'Edit' : 'Process'}
-                              </Button>
-                            )}
+          {/* Payroll List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold">
+                Employee Payroll - {months[parseInt(selectedMonth) - 1]} {selectedYear}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <TableSkeleton rows={5} />
+              ) : (employeesData?.data?.length || 0) === 0 ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-muted-foreground">No employees found</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {employeesData?.data?.map((emp) => {
+                    const empPayroll = getPayrollForEmployee(emp.user_id);
+                    return (
+                      <div
+                        key={emp.id}
+                        className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                              {emp.first_name?.[0]}{emp.last_name?.[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {emp.first_name} {emp.last_name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{emp.employee_id}</p>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </>
-        ) : (
-          // Non-admin view - Show message that payroll is managed by admins
-          <Card>
-            <CardContent className="p-12">
-              <div className="text-center">
-                <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold text-foreground mb-2">Payroll Management</h3>
-                <p className="text-muted-foreground">
-                  Payroll information is managed by administrators. Please contact your HR department for payroll queries.
-                </p>
-              </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            {empPayroll ? (
+                              <>
+                                <p className="font-semibold text-foreground">
+                                  ₹{Number(empPayroll.net_salary || 0).toLocaleString()}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Base: ₹{Number(emp.monthly_salary || 0).toLocaleString()}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="font-semibold text-foreground">
+                                ₹{Number(emp.monthly_salary || 0).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                          <div className="w-24 text-center">
+                            {getStatusBadge(empPayroll?.status)}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedEmployee(emp);
+                              setProcessDialogOpen(true);
+                            }}
+                          >
+                            <Calculator className="h-4 w-4 mr-1" />
+                            {empPayroll ? 'Edit' : 'Process'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
-        )}
-      </div>
+        </div>
 
-      {selectedEmployee && (
-        <ProcessPayrollDialog
-          open={processDialogOpen}
-          onOpenChange={setProcessDialogOpen}
-          employee={selectedEmployee}
-          month={parseInt(selectedMonth)}
-          year={parseInt(selectedYear)}
-          onSuccess={fetchData}
-        />
-      )}
-    </AppLayout>
+        {selectedEmployee && (
+          <ProcessPayrollDialog
+            open={processDialogOpen}
+            onOpenChange={setProcessDialogOpen}
+            employee={selectedEmployee}
+            month={parseInt(selectedMonth)}
+            year={parseInt(selectedYear)}
+            onSuccess={refetch}
+          />
+        )}
+      </AppLayout>
+    </ErrorBoundary>
   );
 }

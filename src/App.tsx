@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CompanyProvider, useCompany } from "@/contexts/CompanyContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import SelectCompany from "./pages/SelectCompany";
@@ -24,17 +26,37 @@ import NotFound from "./pages/NotFound";
 // Super Admin pages
 import SuperAdminLogin from "./pages/super-admin/SuperAdminLogin";
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
+import SuperAdminAnalytics from "./pages/super-admin/SuperAdminAnalytics";
+import SuperAdminSystemMonitor from "./pages/super-admin/SuperAdminSystemMonitor";
+import SuperAdminAuditLogs from "./pages/super-admin/SuperAdminAuditLogs";
 import SuperAdminCompanies from "./pages/super-admin/SuperAdminCompanies";
 import SuperAdminUsers from "./pages/super-admin/SuperAdminUsers";
 import SuperAdminSubscriptions from "./pages/super-admin/SuperAdminSubscriptions";
 import SuperAdminPlans from "./pages/super-admin/SuperAdminPlans";
 import SuperAdminSettings from "./pages/super-admin/SuperAdminSettings";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 3,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+    mutations: {
+      retry: 1,
+      retryDelay: 1000,
+    },
+  },
+});
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const { company, loading: companyLoading } = useCompany();
+  
+  // Initialize session timeout for authenticated users
+  if (user && !loading) {
+    useSessionTimeout();
+  }
 
   if (loading || companyLoading) {
     return (
@@ -52,7 +74,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/select-company" replace />;
   }
 
-  return <>{children}</>;
+  return <ErrorBoundary>{children}</ErrorBoundary>;
 }
 
 function AppRoutes() {
@@ -79,6 +101,9 @@ function AppRoutes() {
       {/* Super Admin routes */}
       <Route path="/super-admin/login" element={<SuperAdminLogin />} />
       <Route path="/super-admin" element={<SuperAdminDashboard />} />
+      <Route path="/super-admin/analytics" element={<SuperAdminAnalytics />} />
+      <Route path="/super-admin/system-monitor" element={<SuperAdminSystemMonitor />} />
+      <Route path="/super-admin/audit-logs" element={<SuperAdminAuditLogs />} />
       <Route path="/super-admin/companies" element={<SuperAdminCompanies />} />
       <Route path="/super-admin/users" element={<SuperAdminUsers />} />
       <Route path="/super-admin/subscriptions" element={<SuperAdminSubscriptions />} />
