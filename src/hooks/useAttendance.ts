@@ -47,9 +47,9 @@ export function useSignIn() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ userId, lat, lng }: { userId: string; lat?: number; lng?: number }) =>
-      attendanceService.signIn(userId, lat, lng),
-    onSuccess: (_, variables) => {
+    mutationFn: ({ userId, companyId, lat, lng }: { userId: string; companyId: string; lat?: number; lng?: number }) =>
+      attendanceService.signIn(userId, companyId, lat, lng),
+    onSuccess: () => {
       // Invalidate all attendance queries to refetch data
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
     },
@@ -60,8 +60,8 @@ export function useSignOut() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ attendanceId, lat, lng }: { attendanceId: string; lat?: number; lng?: number }) =>
-      attendanceService.signOut(attendanceId, lat, lng),
+    mutationFn: ({ attendanceId, companyId, lat, lng }: { attendanceId: string; companyId: string; lat?: number; lng?: number }) =>
+      attendanceService.signOut(attendanceId, companyId, lat, lng),
     onSuccess: () => {
       // Invalidate all attendance queries to refetch data
       queryClient.invalidateQueries({ queryKey: ['attendance'] });

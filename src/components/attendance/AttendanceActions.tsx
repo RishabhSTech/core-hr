@@ -7,6 +7,7 @@ import { AttendanceSession } from '@/types/hrms';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCompany } from '@/contexts/CompanyContext';
 import { useSignIn, useSignOut } from '@/hooks/useAttendance';
 
 interface AttendanceActionsProps {
@@ -16,6 +17,7 @@ interface AttendanceActionsProps {
 
 export function AttendanceActions({ currentSession, onSessionUpdate }: AttendanceActionsProps) {
   const { user } = useAuth();
+  const { company } = useCompany();
   const [elapsedTime, setElapsedTime] = useState('0h 0m 0s');
   const [currentTime, setCurrentTime] = useState(new Date());
   const signInMutation = useSignIn();
@@ -65,10 +67,16 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
       return;
     }
 
+    if (!company?.id) {
+      toast.error('Company not selected. Please select a company first.');
+      return;
+    }
+
     try {
-      console.log('Starting sign in for user:', user.id);
+      console.log('Starting sign in for user:', user.id, 'Company:', company.id);
       await signInMutation.mutateAsync({
         userId: user.id,
+        companyId: company.id,
       });
       console.log('Sign in successful');
       toast.success('🚀 Session started! Have a productive day!');
@@ -87,6 +95,11 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
       return;
     }
 
+    if (!currentSession?.company_id) {
+      toast.error('Session missing company context');
+      return;
+    }
+
     try {
       console.log('Signing out of session:', currentSession.id);
       const signOutTime = new Date();
@@ -95,6 +108,7 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
 
       await signOutMutation.mutateAsync({
         attendanceId: currentSession.id,
+        companyId: currentSession.company_id,
       });
       console.log('Sign out successful');
       toast.success(`Great work! You logged ${hoursWorked.toFixed(1)} hours today 💪`);

@@ -42,26 +42,15 @@ class AttendanceService extends BaseService {
     }, `Get attendance ${id}`);
   }
 
-  async signIn(userId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
+  async signIn(userId: string, companyId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
     return this.withRetry(async () => {
       const now = new Date();
       
-      // Get user's company_id from profiles
-      const { data: profile, error: profileError } = await this.client
-        .from('profiles')
-        .select('company_id')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) {
-        console.error('Profile fetch error:', profileError);
-        throw new Error(`Failed to get user profile: ${profileError.message}`);
+      if (!userId || !companyId) {
+        throw new Error('User ID and Company ID are required');
       }
 
-      if (!profile?.company_id) {
-        console.error('No company_id found for user:', userId);
-        throw new Error('User is not assigned to any company');
-      }
+      console.log('Signing in user:', { userId, companyId });
 
       // Check if already signed in today (has active session with no sign_out_time)
       const today = new Date();
@@ -71,7 +60,7 @@ class AttendanceService extends BaseService {
         .from('attendance_sessions')
         .select('id')
         .eq('user_id', userId)
-        .eq('company_id', profile.company_id)
+        .eq('company_id', companyId)
         .is('sign_out_time', null)
         .gte('created_at', today.toISOString());
 
@@ -86,7 +75,7 @@ class AttendanceService extends BaseService {
       // Insert new attendance session with all required fields
       const attendanceRecord = {
         user_id: userId,
-        company_id: profile.company_id,
+        company_id: companyId,
         sign_in_time: now.toISOString(),
         status: 'present' as const,
       };
@@ -122,11 +111,11 @@ class AttendanceService extends BaseService {
     }, `Sign in ${userId}`);
   }
 
-  async signOut(attendanceId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
+  async signOut(attendanceId: string, companyId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
     return this.withRetry(async () => {
       const signOutTime = new Date().toISOString();
 
-      console.log('Signing out of session:', attendanceId);
+      console.log('Signing out of session:', { attendanceId, companyId });
 
       const { data, error } = await this.client
         .from('attendance_sessions')
@@ -134,6 +123,7 @@ class AttendanceService extends BaseService {
           sign_out_time: signOutTime,
         })
         .eq('id', attendanceId)
+        .eq('company_id', companyId)
         .select()
         .single();
 
@@ -194,15 +184,20 @@ class AttendanceService extends BaseService {
 
   async markAbsent(userId: string, date?: string): Promise<AttendanceSession> {
     return this.withRetry(async () => {
-      // Get user's company_id
-      const { data: profile, error: profileError } = await this.client
+      // Get user's company_id - don't use .single() to avoid errors on empty result
+      const { data: profiles, error: profileError } = await this.client
         .from('profiles')
         .select('company_id')
-        .eq('id', userId)
-        .single();
+        .eq('id', userId);
 
-      if (profileError || !profile?.company_id) {
-        throw new Error('User company context not found');
+      if (profileError || !profiles || profiles.length === 0) {
+        throw new Error('User profile not found');
+      }
+
+      const profile = profiles[0];
+      
+      if (!profile?.company_id) {
+        throw new Error('User is not assigned to any company');
       }
 
       const attendanceDate = date ? `${date}T09:00:00Z` : new Date().toISOString();
@@ -268,15 +263,20 @@ class AttendanceService extends BaseService {
         return [];
       }
 
-      // Get company_id from first user's profile
-      const { data: profile, error: profileError } = await this.client
+      // Get company_id from first user's profile - don't use .single() to avoid errors
+      const { data: profiles, error: profileError } = await this.client
         .from('profiles')
         .select('company_id')
-        .eq('id', attendanceData[0].userId)
-        .single();
+        .eq('id', attendanceData[0].userId);
 
-      if (profileError || !profile?.company_id) {
-        throw new Error('User company context not found');
+      if (profileError || !profiles || profiles.length === 0) {
+        throw new Error('User profile not found');
+      }
+
+      const profile = profiles[0];
+      
+      if (!profile?.company_id) {
+        throw new Error('User is not assigned to any company');
       }
 
       const today = new Date().toISOString();
