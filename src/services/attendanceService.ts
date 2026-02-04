@@ -45,29 +45,35 @@ class AttendanceService extends BaseService {
   async signIn(userId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
     return this.withRetry(async () => {
       const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
       
-      // Get user's company_id
+      // Get user's company_id from profiles
       const { data: profile, error: profileError } = await this.client
         .from('profiles')
         .select('company_id')
         .eq('id', userId)
         .single();
 
-      if (profileError || !profile?.company_id) {
-        throw new Error('User company context not found');
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        throw new Error(`Failed to get user profile: ${profileError.message}`);
+      }
+
+      if (!profile?.company_id) {
+        console.error('No company_id found for user:', userId);
+        throw new Error('User is not assigned to any company');
       }
 
       // Check if already signed in today (has active session with no sign_out_time)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
       const { data: existing, error: checkError } = await this.client
         .from('attendance_sessions')
-        .select('*')
+        .select('id')
         .eq('user_id', userId)
         .eq('company_id', profile.company_id)
         .is('sign_out_time', null)
-        .gte('created_at', todayStart.toISOString())
-        .lte('created_at', todayEnd.toISOString());
+        .gte('created_at', today.toISOString());
 
       if (checkError) {
         console.error('Error checking existing session:', checkError);
@@ -77,44 +83,71 @@ class AttendanceService extends BaseService {
         throw new Error('Already signed in today');
       }
 
-      // Create new attendance session
+      // Insert new attendance session with all required fields
+      const attendanceRecord = {
+        user_id: userId,
+        company_id: profile.company_id,
+        sign_in_time: now.toISOString(),
+        status: 'present' as const,
+      };
+
+      console.log('Inserting attendance record:', attendanceRecord);
+
       const { data, error } = await this.client
         .from('attendance_sessions')
-        .insert({
-          user_id: userId,
-          company_id: profile.company_id,
-          sign_in_time: now.toISOString(),
-          status: 'present',
-        } as any)
+        .insert([attendanceRecord])
         .select()
         .single();
 
       if (error) {
-        console.error('Error inserting attendance:', error);
-        throw error;
+        console.error('Attendance insert error:', error);
+        console.error('Error details:', {
+          code: (error as any)?.code,
+          message: (error as any)?.message,
+          details: (error as any)?.details,
+        });
+        throw new Error(`Failed to create attendance session: ${error.message}`);
       }
 
       if (!data) {
-        throw new Error('Failed to create attendance record');
+        throw new Error('No data returned after creating attendance session');
       }
 
+      console.log('Attendance record created:', data);
+      
+      // Clear cache so queries refetch fresh data
       this.clearCache(`user_attendance:${userId}`);
+      
       return data as AttendanceSession;
     }, `Sign in ${userId}`);
   }
 
   async signOut(attendanceId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
     return this.withRetry(async () => {
+      const signOutTime = new Date().toISOString();
+
+      console.log('Signing out of session:', attendanceId);
+
       const { data, error } = await this.client
         .from('attendance_sessions')
         .update({
-          sign_out_time: new Date().toISOString(),
+          sign_out_time: signOutTime,
         })
         .eq('id', attendanceId)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Sign out error:', error);
+        throw new Error(`Failed to sign out: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error('No data returned after sign out');
+      }
+
+      console.log('Successfully signed out:', data);
+      
       this.clearCache(`attendance:${attendanceId}`);
       return data as AttendanceSession;
     }, `Sign out ${attendanceId}`);

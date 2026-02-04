@@ -66,19 +66,18 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
     }
 
     try {
+      console.log('Starting sign in for user:', user.id);
       await signInMutation.mutateAsync({
         userId: user.id,
       });
+      console.log('Sign in successful');
       toast.success('🚀 Session started! Have a productive day!');
       // Wait a moment for the database to persist before refetching
       setTimeout(onSessionUpdate, 500);
     } catch (error: any) {
-      console.error('Error signing in:', error);
-      if (error.message?.includes('Already signed in')) {
-        toast.error('You are already signed in today');
-      } else {
-        toast.error(error.message || 'Failed to start session');
-      }
+      console.error('Sign in error caught:', error);
+      const errorMessage = error?.message || JSON.stringify(error) || 'Failed to start session';
+      toast.error(errorMessage);
     }
   };
 
@@ -89,6 +88,7 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
     }
 
     try {
+      console.log('Signing out of session:', currentSession.id);
       const signOutTime = new Date();
       const signInTime = new Date(currentSession.sign_in_time);
       const hoursWorked = (signOutTime.getTime() - signInTime.getTime()) / (1000 * 60 * 60);
@@ -96,12 +96,14 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
       await signOutMutation.mutateAsync({
         attendanceId: currentSession.id,
       });
+      console.log('Sign out successful');
       toast.success(`Great work! You logged ${hoursWorked.toFixed(1)} hours today 💪`);
       // Wait a moment for the database to persist before refetching
       setTimeout(onSessionUpdate, 500);
     } catch (error: any) {
-      console.error('Error signing out:', error);
-      toast.error(error.message || 'Failed to end session');
+      console.error('Sign out error caught:', error);
+      const errorMessage = error?.message || JSON.stringify(error) || 'Failed to end session';
+      toast.error(errorMessage);
     }
   };
 
