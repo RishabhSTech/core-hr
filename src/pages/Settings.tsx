@@ -174,13 +174,24 @@ export default function Settings() {
     }
   };
 
-  // Calculate preview values
+  // Calculate preview values (using ₹50,000 as sample salary)
   const baseSalary = 50000;
-  const pfAmount = config.pf_enabled ? baseSalary * config.pf_percentage / 100 : 0;
-  const esicAmount = config.esic_enabled ? baseSalary * config.esic_percentage / 100 : 0;
+  const PF_CAP = 5236; // PF capped at ₹5,236 for employees
+  const ESIC_SALARY_LIMIT = 21000; // ESIC only applicable for salary < ₹21,000
+  
+  // PF with cap
+  const pfCalculated = config.pf_enabled ? baseSalary * config.pf_percentage / 100 : 0;
+  const pfAmount = config.pf_enabled ? Math.min(pfCalculated, PF_CAP) : 0;
+  
+  // ESIC only if salary below limit
+  const esicAmount = config.esic_enabled && baseSalary < ESIC_SALARY_LIMIT ? baseSalary * config.esic_percentage / 100 : 0;
+  
   const ptAmount = config.pt_enabled ? config.pt_amount : 0;
   const totalDeductions = pfAmount + esicAmount + ptAmount;
   const netSalary = baseSalary - totalDeductions;
+  
+  // Employer EPF (not deducted from employee)
+  const employerEpf = config.epf_enabled ? baseSalary * config.epf_percentage / 100 : 0;
 
   if (role !== 'owner' && role !== 'admin') {
     return (
@@ -413,14 +424,24 @@ export default function Settings() {
                 </div>
                 {config.pf_enabled && (
                   <div className="flex justify-between py-2 border-b border-border text-destructive">
-                    <span>PF Deduction ({config.pf_percentage}%)</span>
+                    <div className="flex flex-col">
+                      <span>PF Deduction ({config.pf_percentage}%)</span>
+                      {pfCalculated > PF_CAP && (
+                        <span className="text-xs text-yellow-600">Capped at ₹5,236</span>
+                      )}
+                    </div>
                     <span>- ₹{Math.round(pfAmount).toLocaleString()}</span>
                   </div>
                 )}
                 {config.esic_enabled && (
-                  <div className="flex justify-between py-2 border-b border-border text-destructive">
-                    <span>ESIC Deduction ({config.esic_percentage}%)</span>
-                    <span>- ₹{Math.round(esicAmount).toLocaleString()}</span>
+                  <div className={`flex justify-between py-2 border-b border-border ${baseSalary < ESIC_SALARY_LIMIT ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    <div className="flex flex-col">
+                      <span>ESIC Deduction ({config.esic_percentage}%)</span>
+                      {baseSalary >= ESIC_SALARY_LIMIT && (
+                        <span className="text-xs">Only for salary below ₹21,000</span>
+                      )}
+                    </div>
+                    <span>{baseSalary < ESIC_SALARY_LIMIT ? '- ' : ''}₹{Math.round(esicAmount).toLocaleString()}</span>
                   </div>
                 )}
                 {config.pt_enabled && (

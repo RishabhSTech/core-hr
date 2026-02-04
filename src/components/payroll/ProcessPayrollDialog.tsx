@@ -209,9 +209,22 @@ export function ProcessPayrollDialog({
   const effectiveDays = attendanceData.presentDays + attendanceData.paidLeaveDays;
   const grossSalary = perDaySalary * effectiveDays;
   
-  const pfDeduction = config?.pf_enabled ? (grossSalary * (config.pf_percentage / 100)) : 0;
-  const esicDeduction = config?.esic_enabled ? (grossSalary * (config.esic_percentage / 100)) : 0;
+  // PF Calculation with cap (₹5,236 max for employees)
+  const PF_CAP = 5236;
+  const pfCalculated = config?.pf_enabled ? (grossSalary * (config.pf_percentage / 100)) : 0;
+  const pfDeduction = config?.pf_enabled ? Math.min(pfCalculated, PF_CAP) : 0;
+  
+  // ESIC only applicable if salary < ₹21,000 (Indian statutory rule)
+  const ESIC_SALARY_LIMIT = 21000;
+  const esicCalculated = config?.esic_enabled && grossSalary < ESIC_SALARY_LIMIT ? (grossSalary * (config.esic_percentage / 100)) : 0;
+  const esicDeduction = esicCalculated;
+  const esicApplicable = config?.esic_enabled && grossSalary < ESIC_SALARY_LIMIT;
+  
+  // Professional Tax
   const ptDeduction = config?.pt_enabled ? (config.pt_amount || 0) : 0;
+  
+  // Employer EPF (not deducted from employee)
+  const employerEpf = config?.epf_enabled ? (grossSalary * (config.epf_percentage / 100)) : 0;
   
   const totalAdditions = adjustments.filter(a => a.type === 'addition').reduce((sum, a) => sum + a.amount, 0);
   const totalCustomDeductions = adjustments.filter(a => a.type === 'deduction').reduce((sum, a) => sum + a.amount, 0);
@@ -234,6 +247,7 @@ export function ProcessPayrollDialog({
         gross_salary: Math.round(grossSalary),
         pf_amount: Math.round(pfDeduction),
         esic_amount: Math.round(esicDeduction),
+        epf_amount: Math.round(employerEpf),
         total_additions: Math.round(totalAdditions),
         total_deductions: Math.round(totalDeductions),
         deductions: Math.round(totalDeductions),
@@ -366,14 +380,24 @@ export function ProcessPayrollDialog({
                   <div className="space-y-2 text-sm">
                     {config?.pf_enabled && (
                       <div className="flex justify-between text-destructive">
-                        <span>PF ({config.pf_percentage}%)</span>
+                        <div className="flex flex-col">
+                          <span>PF ({config.pf_percentage}%)</span>
+                          {pfCalculated > PF_CAP && (
+                            <span className="text-xs text-yellow-600">Capped at ₹5,236</span>
+                          )}
+                        </div>
                         <span>- ₹{Math.round(pfDeduction).toLocaleString()}</span>
                       </div>
                     )}
                     {config?.esic_enabled && (
-                      <div className="flex justify-between text-destructive">
-                        <span>ESIC ({config.esic_percentage}%)</span>
-                        <span>- ₹{Math.round(esicDeduction).toLocaleString()}</span>
+                      <div className={`flex justify-between ${esicApplicable ? 'text-destructive' : 'text-muted-foreground'}`}>
+                        <div className="flex flex-col">
+                          <span>ESIC ({config.esic_percentage}%)</span>
+                          {!esicApplicable && (
+                            <span className="text-xs">Salary ≥ ₹21,000 (not applicable)</span>
+                          )}
+                        </div>
+                        <span>{esicApplicable ? '- ' : ''}₹{Math.round(esicDeduction).toLocaleString()}</span>
                       </div>
                     )}
                     {config?.pt_enabled && (
@@ -388,6 +412,22 @@ export function ProcessPayrollDialog({
             )}
 
             <Separator />
+
+            {/* Employer Contributions */}
+            {config?.epf_enabled && employerEpf > 0 && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Employer Contributions</Label>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between text-blue-600 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <span>Employer EPF ({config.epf_percentage}%)</span>
+                      <span>+ ₹{Math.round(employerEpf).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
 
             {/* Custom Adjustments */}
             <div className="space-y-3">
@@ -472,6 +512,11 @@ export function ProcessPayrollDialog({
                 <span>Net Salary</span>
                 <span className="text-green-600">₹{Math.round(netSalary).toLocaleString()}</span>
               </div>
+              {config?.epf_enabled && employerEpf > 0 && (
+                <div className="flex justify-between text-sm text-blue-600 pt-2 border-t border-primary/20 mt-2">
+                  <span className="text-xs">(Employer EPF: ₹{Math.round(employerEpf).toLocaleString()})</span>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 justify-end">
