@@ -34,11 +34,7 @@ export default function Attendance() {
     isLoading: reportLoading,
     error: reportError,
     refetch: refetchReport
-  } = useAttendanceReport({
-    userId: user?.id,
-    month: now.getMonth() + 1,
-    year: now.getFullYear()
-  });
+  } = useAttendanceReport(monthStart, monthEnd);
 
   // Calculate stats efficiently
   const stats = useMemo(() => {

@@ -2,10 +2,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { attendanceService } from '@/services/attendanceService';
 
-export function useAttendance(filters = {}) {
+export function useAttendance(filters: any = {}) {
   return useQuery({
     queryKey: ['attendance', filters],
     queryFn: () => attendanceService.getAttendance(filters),
+    enabled: !!filters.userId,
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 5 * 60 * 1000, // 5 minutes
   });

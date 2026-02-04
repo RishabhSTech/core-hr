@@ -3,8 +3,25 @@ import { BaseService, PaginationParams } from './baseService';
 import { AttendanceSession, AttendanceStatus } from '@/types/hrms';
 
 class AttendanceService extends BaseService {
-  async getAttendance(filters: PaginationParams = {}): Promise<any> {
-    return this.fetchPaginated<AttendanceSession>('attendance_sessions', filters);
+  async getAttendance(filters: any = {}): Promise<{ data: AttendanceSession[] }> {
+    return this.withRetry(async () => {
+      let query = this.client.from('attendance_sessions').select('*');
+
+      if (filters.userId) {
+        query = query.eq('user_id', filters.userId);
+      }
+      if (filters.startDate) {
+        query = query.gte('sign_in_time', `${filters.startDate}T00:00:00`);
+      }
+      if (filters.endDate) {
+        query = query.lte('sign_in_time', `${filters.endDate}T23:59:59`);
+      }
+
+      const { data, error } = await query.order('sign_in_time', { ascending: false });
+
+      if (error) throw error;
+      return { data: (data || []) as AttendanceSession[] };
+    }, 'Get attendance');
   }
 
   async getAttendanceById(id: string): Promise<AttendanceSession> {
@@ -90,7 +107,7 @@ class AttendanceService extends BaseService {
         .from('attendance_sessions')
         .select('*')
         .eq('user_id', userId)
-        .order('date', { ascending: false })
+        .order('sign_in_time', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
@@ -109,7 +126,8 @@ class AttendanceService extends BaseService {
       const { data, error } = await this.client
         .from('attendance_sessions')
         .select('*')
-        .eq('date', today)
+        .gte('sign_in_time', `${today}T00:00:00`)
+        .lte('sign_in_time', `${today}T23:59:59`)
         .order('sign_in_time', { ascending: false });
 
       if (error) throw error;
@@ -119,17 +137,15 @@ class AttendanceService extends BaseService {
   }
 
   async markAbsent(userId: string, date?: string): Promise<AttendanceSession> {
-    const attendanceDate = date || new Date().toISOString().split('T')[0];
+    const attendanceDate = date ? `${date}T09:00:00Z` : new Date().toISOString();
 
     return this.withRetry(async () => {
       const { data, error } = await this.client
         .from('attendance_sessions')
         .insert([{
           user_id: userId,
-          date: attendanceDate,
+          sign_in_time: attendanceDate,
           status: 'absent' as AttendanceStatus,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         }])
         .select()
         .single();
@@ -149,9 +165,9 @@ class AttendanceService extends BaseService {
       const { data, error } = await this.client
         .from('attendance_sessions')
         .select('*')
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: false });
+        .gte('sign_in_time', `${startDate}T00:00:00`)
+        .lte('sign_in_time', `${endDate}T23:59:59`)
+        .order('sign_in_time', { ascending: false });
 
       if (error) throw error;
       this.setCache(cacheKey, data || []);
@@ -165,7 +181,6 @@ class AttendanceService extends BaseService {
         .from('attendance_sessions')
         .update({
           status,
-          updated_at: new Date().toISOString(),
         })
         .eq('id', attendanceId)
         .select()
@@ -181,15 +196,16 @@ class AttendanceService extends BaseService {
     attendanceData: Array<{ userId: string; status: AttendanceStatus; date?: string }>
   ): Promise<AttendanceSession[]> {
     return this.withRetry(async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toISOString();
       
-      const records = attendanceData.map(item => ({
-        user_id: item.userId,
-        date: item.date || today,
-        status: item.status,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
+      const records = attendanceData.map(item => {
+        const dateTime = item.date ? `${item.date}T09:00:00Z` : today;
+        return {
+          user_id: item.userId,
+          sign_in_time: dateTime,
+          status: item.status,
+        };
+      });
 
       const { data, error } = await this.client
         .from('attendance_sessions')
