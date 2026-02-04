@@ -209,8 +209,8 @@ export function ProcessPayrollDialog({
   const effectiveDays = attendanceData.presentDays + attendanceData.paidLeaveDays;
   const grossSalary = perDaySalary * effectiveDays;
   
-  // PF Calculation with cap (₹5,236 max for employees)
-  const PF_CAP = 5236;
+  // PF Calculation with cap (₹1,800 max for employees - statutory limit)
+  const PF_CAP = 1800;
   const pfCalculated = config?.pf_enabled ? (grossSalary * (config.pf_percentage / 100)) : 0;
   const pfDeduction = config?.pf_enabled ? Math.min(pfCalculated, PF_CAP) : 0;
   
@@ -383,7 +383,7 @@ export function ProcessPayrollDialog({
                         <div className="flex flex-col">
                           <span>PF ({config.pf_percentage}%)</span>
                           {pfCalculated > PF_CAP && (
-                            <span className="text-xs text-yellow-600">Capped at ₹5,236</span>
+                            <span className="text-xs text-yellow-600">Capped at ₹1,800</span>
                           )}
                         </div>
                         <span>- ₹{Math.round(pfDeduction).toLocaleString()}</span>

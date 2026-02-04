@@ -176,10 +176,10 @@ export default function Settings() {
 
   // Calculate preview values (using ₹50,000 as sample salary)
   const baseSalary = 50000;
-  const PF_CAP = 5236; // PF capped at ₹5,236 for employees
+  const PF_CAP = 1800; // PF capped at ₹1,800 for employees (statutory limit)
   const ESIC_SALARY_LIMIT = 21000; // ESIC only applicable for salary < ₹21,000
   
-  // PF with cap
+  // PF with cap (max employee contribution ₹1,800/month)
   const pfCalculated = config.pf_enabled ? baseSalary * config.pf_percentage / 100 : 0;
   const pfAmount = config.pf_enabled ? Math.min(pfCalculated, PF_CAP) : 0;
   
@@ -427,7 +427,7 @@ export default function Settings() {
                     <div className="flex flex-col">
                       <span>PF Deduction ({config.pf_percentage}%)</span>
                       {pfCalculated > PF_CAP && (
-                        <span className="text-xs text-yellow-600">Capped at ₹5,236</span>
+                        <span className="text-xs text-yellow-600">Capped at ₹1,800</span>
                       )}
                     </div>
                     <span>- ₹{Math.round(pfAmount).toLocaleString()}</span>
