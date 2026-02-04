@@ -27,7 +27,7 @@ export default function Employees() {
   }
 
   // Fetch data using service layer
-  const { data: employees, isLoading, error, refetch } = useEmployees({ pageSize: 100 });
+  const { data: employees, isLoading, error, refetch } = useEmployees({ companyId: company?.id, pageSize: 100 });
   const { data: departments, isLoading: deptLoading } = useDepartments(company?.id || null);
 
   // Search input with debouncing

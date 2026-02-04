@@ -5,6 +5,7 @@ import { BaseService, PaginationParams, ServiceError } from './baseService';
 import { Profile, Department, UserRole } from '@/types/hrms';
 
 export interface EmployeeFilters extends PaginationParams {
+  companyId?: string;
   departmentId?: string;
   search?: string;
   role?: string;
@@ -22,8 +23,8 @@ class EmployeeService extends BaseService {
    * Replaces direct DB calls in Employees.tsx
    */
   async getEmployees(filters: EmployeeFilters = {}): Promise<any> {
-    const { departmentId, search, role, status = 'active', page = 1, pageSize = 50, sort } = filters;
-    const cacheKey = `employees:${departmentId}:${search}:${role}:${status}:${page}`;
+    const { companyId, departmentId, search, role, status = 'active', page = 1, pageSize = 50, sort } = filters;
+    const cacheKey = `employees:${companyId}:${departmentId}:${search}:${role}:${status}:${page}`;
 
     // Check cache
     const cached = this.getCache(cacheKey);
@@ -34,6 +35,11 @@ class EmployeeService extends BaseService {
         '*, department:departments(*), user_roles(*)',
         { count: 'exact' }
       );
+
+      // Apply company filter (required for RLS)
+      if (companyId) {
+        query = query.eq('company_id', companyId);
+      }
 
       // Apply filters
       if (departmentId) {
