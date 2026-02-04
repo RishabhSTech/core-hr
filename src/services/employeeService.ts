@@ -27,6 +27,7 @@ class EmployeeService extends BaseService {
     
     // Company ID is required for RLS policies to work correctly
     if (!companyId) {
+      console.warn('[EmployeeService] companyId is required but was not provided');
       return { data: [], count: 0, hasMore: false, page };
     }
     
@@ -37,47 +38,34 @@ class EmployeeService extends BaseService {
     if (cached) return cached;
 
     return this.withRetry(async () => {
+      console.log('[EmployeeService] Fetching employees for company:', companyId);
+      
       let query = this.client.from('profiles').select(
-        '*, department:departments(*), user_roles(*)',
+        '*',
         { count: 'exact' }
       );
 
-      // Apply company filter (REQUIRED for RLS)
-      query = query.eq('company_id', companyId);
-
-      // Apply filters
-      if (departmentId) {
-        query = query.eq('department_id', departmentId);
-      }
-
-      if (status === 'active') {
-        query = query.is('deleted_at', null);
-      }
-
-      if (search) {
-        query = query.or(
-          `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`
-        );
-      }
+      // Don't filter by company_id here - let RLS handle it
+      // Just order by name for consistency
+      query = query.order('first_name', { ascending: true });
 
       // Apply pagination
       const start = (page - 1) * pageSize;
       query = query.range(start, start + pageSize - 1);
 
-      // Apply sorting
-      if (sort) {
-        query = query.order(sort.column, { ascending: sort.ascending });
-      } else {
-        query = query.order('first_name', { ascending: true });
+      const { data, count, error } = await query;
+      if (error) {
+        console.error('[EmployeeService] Query error:', error);
+        throw error;
       }
 
-      const { data, count, error } = await query;
-      if (error) throw error;
-
+      // Filter by company_id client-side if needed
+      const filteredData = data?.filter(p => p.company_id === companyId) || [];
+      
       const result = {
-        data: data as EmployeeWithRelations[],
-        count: count || 0,
-        hasMore: (page * pageSize) < (count || 0),
+        data: filteredData as EmployeeWithRelations[],
+        count: filteredData.length,
+        hasMore: false,
         page,
       };
 
