@@ -6,8 +6,8 @@ import { LogIn, LogOut, Clock, Timer, Zap } from 'lucide-react';
 import { AttendanceSession } from '@/types/hrms';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSignIn, useSignOut } from '@/hooks/useAttendance';
 
 interface AttendanceActionsProps {
   currentSession: AttendanceSession | null;
@@ -15,10 +15,11 @@ interface AttendanceActionsProps {
 }
 
 export function AttendanceActions({ currentSession, onSessionUpdate }: AttendanceActionsProps) {
-  const { user, profile } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
   const [elapsedTime, setElapsedTime] = useState('0h 0m 0s');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const signInMutation = useSignIn();
+  const signOutMutation = useSignOut();
 
   // Update current time every second
   useEffect(() => {
@@ -59,64 +60,46 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
   };
 
   const handleSignIn = async () => {
-    if (!user) return;
-    setLoading(true);
-    
-    try {
-      const { data, error } = await supabase
-        .from('attendance_sessions')
-        .insert({
-          user_id: user.id,
-          company_id: profile?.company_id || null,
-          sign_in_time: new Date().toISOString(),
-          status: 'present'
-        })
-        .select()
-        .single();
+    if (!user?.id) {
+      toast.error('User not authenticated');
+      return;
+    }
 
-      if (error) throw error;
+    try {
+      await signInMutation.mutateAsync({
+        userId: user.id,
+      });
       toast.success('🚀 Session started! Have a productive day!');
       onSessionUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in:', error);
-      toast.error('Failed to start session');
-    } finally {
-      setLoading(false);
+      if (error.message?.includes('Already signed in')) {
+        toast.error('You are already signed in today');
+      } else {
+        toast.error(error.message || 'Failed to start session');
+      }
     }
   };
 
   const handleSignOut = async () => {
-    if (!currentSession) return;
-    setLoading(true);
+    if (!currentSession?.id) {
+      toast.error('No active session found');
+      return;
+    }
 
     try {
       const signOutTime = new Date();
       const signInTime = new Date(currentSession.sign_in_time);
       const hoursWorked = (signOutTime.getTime() - signInTime.getTime()) / (1000 * 60 * 60);
-      
-      let status: 'present' | 'half_day' | 'late' = 'present';
-      if (hoursWorked < 4) {
-        status = 'half_day';
-      } else if (signInTime.getHours() > 10) {
-        status = 'late';
-      }
 
-      const { error } = await supabase
-        .from('attendance_sessions')
-        .update({
-          sign_out_time: signOutTime.toISOString(),
-          status
-        })
-        .eq('id', currentSession.id);
-
-      if (error) throw error;
+      await signOutMutation.mutateAsync({
+        attendanceId: currentSession.id,
+      });
       toast.success(`Great work! You logged ${hoursWorked.toFixed(1)} hours today 💪`);
       onSessionUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing out:', error);
-      toast.error('Failed to end session');
-    } finally {
-      setLoading(false);
+      toast.error(error.message || 'Failed to end session');
     }
   };
 
@@ -164,10 +147,10 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
               className="w-full h-12 text-base font-semibold" 
               variant="destructive" 
               onClick={handleSignOut}
-              disabled={loading}
+              disabled={signOutMutation.isPending}
             >
               <LogOut className="h-5 w-5 mr-2" />
-              {loading ? 'Ending Session...' : 'End Session'}
+              {signOutMutation.isPending ? 'Ending Session...' : 'End Session'}
             </Button>
           </>
         ) : (
@@ -195,10 +178,10 @@ export function AttendanceActions({ currentSession, onSessionUpdate }: Attendanc
             <Button 
               className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70" 
               onClick={handleSignIn}
-              disabled={loading}
+              disabled={signInMutation.isPending}
             >
               <LogIn className="h-5 w-5 mr-2" />
-              {loading ? 'Starting Session...' : 'Start Session'}
+              {signInMutation.isPending ? 'Starting Session...' : 'Start Session'}
             </Button>
           </>
         )}

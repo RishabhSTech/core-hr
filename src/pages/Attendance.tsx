@@ -44,6 +44,15 @@ export default function Attendance() {
   const stats = useMemo(() => {
     const sessions = sessionData?.data || [];
     
+    if (sessions.length === 0) {
+      return {
+        presentDays: 0,
+        absentDays: 0,
+        halfDays: 0,
+        totalHours: 0,
+      };
+    }
+    
     const presentCount = sessions.filter(s => s.status === 'present').length;
     const halfDayCount = sessions.filter(s => s.status === 'half_day').length;
     const lateCount = sessions.filter(s => s.status === 'late').length;

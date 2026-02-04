@@ -27,14 +27,17 @@ class AttendanceService extends BaseService {
 
   async signIn(userId: string, lat?: number, lng?: number): Promise<AttendanceSession> {
     return this.withRetry(async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
       
-      // Check if already signed in today
+      // Check if already signed in today (no sign_out_time)
       const { data: existing } = await this.client
         .from('attendance_sessions')
         .select('*')
         .eq('user_id', userId)
-        .eq('date', today)
+        .gte('sign_in_time', `${today}T00:00:00`)
+        .lt('sign_in_time', `${today}T23:59:59`)
+        .is('sign_out_time', null)
         .single();
 
       if (existing) {
@@ -45,13 +48,8 @@ class AttendanceService extends BaseService {
         .from('attendance_sessions')
         .insert([{
           user_id: userId,
-          date: today,
-          sign_in_time: new Date().toISOString(),
-          sign_in_lat: lat,
-          sign_in_lng: lng,
+          sign_in_time: now.toISOString(),
           status: 'present',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         }])
         .select()
         .single();
