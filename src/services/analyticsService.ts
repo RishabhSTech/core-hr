@@ -38,14 +38,19 @@ class AnalyticsService extends BaseService {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
-      // Payroll estimate
+      // Payroll estimate (current month total for this company)
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
       const { data: payrollData } = await this.client
         .from('payroll')
         .select('net_salary')
-        .order('month', { ascending: false })
-        .limit(1);
+        .eq('company_id', companyId)
+        .eq('month', currentMonth)
+        .eq('year', currentYear);
 
-      // Department counts
+      const payrollEstimate = payrollData?.reduce((sum, p) => sum + (p.net_salary || 0), 0) || 0;
       const { data: deptData } = await this.client
         .from('departments')
         .select('id, name')
@@ -78,7 +83,7 @@ class AnalyticsService extends BaseService {
         totalEmployees: employeeCount || 0,
         presentToday: presentData?.length || 0,
         pendingLeaves: pendingLeaves || 0,
-        payrollEstimate: payrollData?.[0]?.net_salary || 0,
+        payrollEstimate: payrollEstimate,
         departmentCounts,
         attendanceRate: Math.round(attendanceRate),
       };
